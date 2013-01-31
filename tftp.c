@@ -218,15 +218,28 @@ int tftp_send_ack(struct tftp_conn *tc)
 int tftp_send_data(struct tftp_conn *tc, int length)
 {
     struct tftp_data *tdata;
+	int length_real = abs(length);
+	int	dataplen = TFTP_DATA_HDR_LEN + length_real;
+
+    tdata = malloc(dataplen);
     
     if (length < 0) {
 		//Resend old data block
-		
+		memcpy(tdata, tc->msgbuf, dataplen);
 	} else {
 		//Create new data block
+		
+		tdata->opcode = 3;
+		tdata->blocknr = tc->blocknr; // TODO: dessa måste antaligen konverteras till network byte order
+		
+		length_real = fread(tdata->data, length_real, 1, tc->fp);
+		
+		/* Recalculate the package length in case we only was able to
+		 * read less than 'length_real' bytes from the file */
+		dataplen = TFTP_DATA_HDR_LEN + length_real;
 	}
     
-    return 0;
+    return sendto(tc->sock, tdata, dataplen, 0, (struct sockaddr *) &tc->peer_addr, tc->addrlen);
 }
 
 /*
@@ -250,8 +263,7 @@ int tftp_transfer(struct tftp_conn *tc)
     if (!tc)
         return -1;
 
-	//len = 0;
-    len = BLOCK_SIZE; // len måste väl alltid vara BLOCK_SIZE så varför ens ha variabeln?
+    len = 0;
 
     /* After the connection request we should start receiving data
      * immediately */
@@ -311,7 +323,7 @@ int tftp_transfer(struct tftp_conn *tc)
                             tftp_send_wrq(tc);
                             continue;
                         case 3:
-                            tftp_send_data(tc, len);
+                            tftp_send_data(tc, -len);
                             continue;
                         case 4:
                             tftp_send_ack(tc);
@@ -326,7 +338,10 @@ int tftp_transfer(struct tftp_conn *tc)
                     break;
                 default:
                     //TODO: Använda recvfrom() / tmpbuf istället och kolla efter felaktig source port.
-                    read(tc->sock, tc->msgbuf, MSGBUF_SIZE);
+                    
+                    /* Save the recieved bytes in 'len' to that we can see
+                     * if we should terminate the transfer */
+                    len = read(tc->sock, tc->msgbuf, MSGBUF_SIZE);
                     break;
                 }
 
@@ -339,6 +354,7 @@ int tftp_transfer(struct tftp_conn *tc)
                 {
                 case OPCODE_DATA:
                     /* Received data block, send ack */
+                    //TODO: terminera på paket < 512
                     
                     if (tc->type == TFTP_TYPE_GET) {
 						fprintf(stderr, "\nExpected ack, got data\n");
@@ -356,7 +372,9 @@ int tftp_transfer(struct tftp_conn *tc)
 						goto out;
 					}
                     
-                    tftp_send_data(tc, len); //TODO: Kolla returvärdet
+                    /* Save the numer of sent bytes in 'len' in case
+                     * it's < 512 and the package has to be resent. */
+                    len = tftp_send_data(tc, BLOCK_SIZE); //TODO: Kolla returvärdet
                     
                     break;
                 case OPCODE_ERR:
