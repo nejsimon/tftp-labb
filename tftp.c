@@ -217,7 +217,15 @@ int tftp_send_ack(struct tftp_conn *tc)
  */
 int tftp_send_data(struct tftp_conn *tc, int length)
 {
-    /* struct tftp_data *tdata; */
+    struct tftp_data *tdata;
+    
+    if (length < 0) {
+		//Resend old data block
+		
+	} else {
+		//Create new data block
+	}
+    
     return 0;
 }
 
@@ -242,7 +250,8 @@ int tftp_transfer(struct tftp_conn *tc)
     if (!tc)
         return -1;
 
-    len = 0;
+	//len = 0;
+    len = BLOCK_SIZE; // len måste väl alltid vara BLOCK_SIZE så varför ens ha variabeln?
 
     /* After the connection request we should start receiving data
      * immediately */
@@ -280,9 +289,9 @@ int tftp_transfer(struct tftp_conn *tc)
     do
         {
             /* 1. Wait for something from the server (using
-                     * 'select'). If a timeout occurs, resend last block
-                     * or ack depending on whether we are in put or get
-                     * mode. */
+             * 'select'). If a timeout occurs, resend last block
+             * or ack depending on whether we are in put or get
+             * mode. */
 
             /* ... */
 
@@ -302,7 +311,7 @@ int tftp_transfer(struct tftp_conn *tc)
                             tftp_send_wrq(tc);
                             continue;
                         case 3:
-                            tftp_send_data(tc, len); // TODO: len sätts var?
+                            tftp_send_data(tc, len);
                             continue;
                         case 4:
                             tftp_send_ack(tc);
