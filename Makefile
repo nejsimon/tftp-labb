@@ -1,4 +1,4 @@
-CC := gcc-4.7
+CC := gcc
 LD := ld
 SRC := tftp.c
 OBJ := $(SRC:%.c=%.o)

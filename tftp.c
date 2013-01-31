@@ -173,9 +173,19 @@ int tftp_send_wrq(struct tftp_conn *tc)
 {
     /* struct tftp_wrq *wrq; */
 
-    /* ... */
+    int reqlen = TFTP_WRQ_LEN(tc->fname, tc->mode);
 
-    return 0;
+    struct tftp_wrq *wrq = malloc(reqlen);
+
+    wrq->opcode = htons(OPCODE_WRQ);
+
+    strcpy (tc->fname, &wrq->req[0]);
+    strcpy (tc->mode, &wrq->req[strlen(tc->fname) + 1]);
+
+    // Save the message in the msgbuffer
+    memcpy(tc->msgbuf, wrq, reqlen);
+
+    return sendto(tc->sock, wrq, reqlen, 0, (struct sockaddr *) &tc->peer_addr, tc->addrlen);
 }
 
 
@@ -320,9 +330,25 @@ int tftp_transfer(struct tftp_conn *tc)
                 {
                 case OPCODE_DATA:
                     /* Received data block, send ack */
+                    
+                    if (tc->type == TFTP_TYPE_GET) {
+						fprintf(stderr, "\nExpected ack, got data\n");
+						goto out;
+					}
+					
+					tftp_send_ack(tc); //TODO: Kolla returvärdet
+                    
                     break;
                 case OPCODE_ACK:
                     /* Received ACK, send next block */
+                    
+                    if (tc->type == TFTP_TYPE_GET) {
+						fprintf(stderr, "\nExpected data, got ack\n");
+						goto out;
+					}
+                    
+                    tftp_send_data(tc, len); //TODO: Kolla returvärdet
+                    
                     break;
                 case OPCODE_ERR:
                     /* Handle error... */
