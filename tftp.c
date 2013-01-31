@@ -62,10 +62,6 @@ struct tftp_conn *tftp_connect(int type, char *fname, char *mode,
     struct addrinfo hints;
     struct addrinfo * res = NULL;
 	struct tftp_conn *tc;
-	
-	/* Gör om portnummret till en sträng */
-	char port[6];
-	sprintf(port, "%d", TFTP_PORT);
 
 	if (!fname || !mode || !hostname)
 		return NULL;
@@ -108,7 +104,7 @@ struct tftp_conn *tftp_connect(int type, char *fname, char *mode,
     char port_str[5];
     sprintf(port_str, "%d", TFTP_PORT);
 
-    if (getaddrinfo(hostname, port, &hints, &res)) {
+    if (getaddrinfo(hostname, port_str, &hints, &res)) {
         fprintf(stderr, "Couldn't get host address info!\n");
         return NULL;
         /* TODO: Something to clean up? */   
@@ -153,9 +149,11 @@ int tftp_send_rrq(struct tftp_conn *tc)
 
     rrq->opcode = htons(OPCODE_RRQ);
 
-    bcopy(tc->fname, &rrq->req[0], strlen(tc->fname) + 1);
-        
-    bcopy(tc->mode, &rrq->req[strlen(tc->fname) + 1], strlen(tc->mode) + 1);
+    strcpy (tc->fname, &rrq->req[0]);
+    strcpy (tc->mode, &rrq->req[strlen(tc->fname) + 1]);
+    
+    // Save the message in the msgbuffer
+    memcpy(tc->msgbuf, rrq, reqlen);
 
     return sendto(tc->sock, rrq, reqlen, 0, (struct sockaddr *) &tc->peer_addr, tc->addrlen);
 }
@@ -219,6 +217,12 @@ int tftp_transfer(struct tftp_conn *tc)
 	int totlen = 0;
 	struct timeval timeout;
 
+	fd_set sfd;
+    //char tmpbuf[MSGBUF_SIZE];
+	
+	FD_ZERO(&sfd);
+    FD_SET(tc->sock, &sfd);
+
         /* Sanity check */
 	if (!tc)
 		return -1;
@@ -261,6 +265,42 @@ int tftp_transfer(struct tftp_conn *tc)
 
                 /* ... */
 
+        switch (select(1, &sfd, NULL, NULL, &timeout)) {
+            case (-1):
+                fprintf(stderr, "\nselect()\n");
+                break;
+            case (0): // Timeout, do a resend.
+                // Nested case-switch statemens are awesome!
+                switch ((u_int16_t) tc->msgbuf[0]) {
+                    case 1:
+                        tftp_send_rrq(tc);
+                        continue;
+                    case 2:
+                        tftp_send_wrq(tc);
+                        continue;
+                    case 3:
+                        tftp_send_data(tc, len); // TODO: len sätts var?
+                        continue;
+                    case 4:
+                        tftp_send_ack(tc);
+                        continue;
+                    case 5:
+                        //TODO: Vilka error-medelanden ska skickas om, om några?
+                        continue;
+                    default:
+                        fprintf(stderr, "\nThis shouldn't happend\n");
+			            goto out;
+                }
+                break;
+            default:
+                //TODO: Använda recvfrom() / tmpbuf istället och kolla efter felaktig source port.
+                read(tc->sock, tc->msgbuf, MSGBUF_SIZE);
+                break;
+        }
+            
+                
+                
+
                 /* 2. Check the message type and take the necessary
                  * action. */
 		switch ( 0 /* change for msg type */ ) {
@@ -277,7 +317,7 @@ int tftp_transfer(struct tftp_conn *tc)
 			fprintf(stderr, "\nUnknown message type\n");
 			goto out;
 
-		}
+		} 
 
 	} while ( 0 /* 3. Loop until file is finished */);
 
