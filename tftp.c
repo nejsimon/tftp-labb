@@ -154,8 +154,8 @@ int tftp_send_rrq(struct tftp_conn *tc)
 
     rrq->opcode = htons(OPCODE_RRQ);
 
-    strcpy (tc->fname, &rrq->req[0]);
-    strcpy (tc->mode, &rrq->req[strlen(tc->fname) + 1]);
+    strcpy (&rrq->req[0], tc->fname);
+    strcpy (&rrq->req[strlen(tc->fname) + 1], tc->mode);
 
     // Save the message in the msgbuffer
     memcpy(tc->msgbuf, rrq, reqlen);
@@ -179,8 +179,8 @@ int tftp_send_wrq(struct tftp_conn *tc)
 
     wrq->opcode = htons(OPCODE_WRQ);
 
-    strcpy (tc->fname, &wrq->req[0]);
-    strcpy (tc->mode, &wrq->req[strlen(tc->fname) + 1]);
+    strcpy (&wrq->req[0], tc->fname);
+    strcpy (&wrq->req[strlen(tc->fname) + 1], tc->mode);
 
     // Save the message in the msgbuffer
     memcpy(tc->msgbuf, wrq, reqlen);
@@ -224,13 +224,15 @@ int tftp_send_data(struct tftp_conn *tc, int length)
     tdata = malloc(dataplen);
     
     if (length < 0) {
-		//Resend old data block
+		/* Resend old data block */
 		memcpy(tdata, tc->msgbuf, dataplen);
 	} else {
-		//Create new data block
+		/* Create new data block */
 		
-		tdata->opcode = 3;
-		tdata->blocknr = tc->blocknr; // TODO: dessa måste antaligen konverteras till network byte order
+		tdata->blocknr++;
+		
+		tdata->opcode = htons(OPCODE_DATA);
+		tdata->blocknr = htonl(tc->blocknr);
 		
 		length_real = fread(tdata->data, length_real, 1, tc->fp);
 		
@@ -250,7 +252,10 @@ int tftp_transfer(struct tftp_conn *tc)
 {
     int retval = 0;
     int len;
+    int reclen;
     int totlen = 0;
+    int terminate = 0;
+    
     struct timeval timeout;
 
     fd_set sfd;
@@ -264,6 +269,7 @@ int tftp_transfer(struct tftp_conn *tc)
         return -1;
 
     len = 0;
+    reclen = 0;
 
     /* After the connection request we should start receiving data
      * immediately */
@@ -305,16 +311,21 @@ int tftp_transfer(struct tftp_conn *tc)
              * or ack depending on whether we are in put or get
              * mode. */
 
-            /* ... */
+            /* ... */    
 
             switch (select(1, &sfd, NULL, NULL, &timeout))
                 {
                 case (-1):
                     fprintf(stderr, "\nselect()\n");
                     break;
-                case (0): // Timeout, do a resend.
-                    // Nested case-switch statemens are awesome!
-                    switch ((u_int16_t) tc->msgbuf[0])
+                case (0): 
+					/* Timeout, reinit the counter and do a resend.
+					 * Nested switch-case statemens are awesome! */
+					
+					timeout.tv_sec = TFTP_TIMEOUT;
+					timeout.tv_usec = 0;
+                    
+                    switch (ntohs(((u_int16_t*) tc->msgbuf)[0]))
                         {
                         case 1:
                             tftp_send_rrq(tc);
@@ -339,29 +350,40 @@ int tftp_transfer(struct tftp_conn *tc)
                 default:
                     //TODO: Använda recvfrom() / tmpbuf istället och kolla efter felaktig source port.
                     
-                    /* Save the recieved bytes in 'len' to that we can see
-                     * if we should terminate the transfer */
-                    len = read(tc->sock, tc->msgbuf, MSGBUF_SIZE);
+                    /* Save the recieved bytes in 'rec_len' so we
+                     * can check if we should terminate the transfer */
+                    reclen = read(tc->sock, tc->msgbuf, MSGBUF_SIZE);
                     break;
                 }
-
-
-
-
+               
             /* 2. Check the message type and take the necessary
              * action. */
-            switch ( 0 /* change for msg type */ )
+            switch (ntohs(((u_int16_t*) tc->msgbuf)[0]))
                 {
                 case OPCODE_DATA:
                     /* Received data block, send ack */
-                    //TODO: terminera på paket < 512
-                    
-                    if (tc->type == TFTP_TYPE_GET) {
+                    //TODO: Skriv datan till en fil
+                  
+                    if (tc->type == TFTP_TYPE_PUT) {
 						fprintf(stderr, "\nExpected ack, got data\n");
 						goto out;
 					}
 					
-					tftp_send_ack(tc); //TODO: Kolla returvärdet
+					if (ntohs(((u_int16_t*) tc->msgbuf)[1]) != (tc->blocknr + 1))
+						{
+							fprintf(stderr, "\nGot unexpected data block§ nr\n");
+							goto out;
+						}
+					
+					tc->blocknr++;
+					
+					/* If we are getting and recieved a data package with
+                     * a block of < 512, we want to terminate the loop
+                     * after getting sending an ack */
+					if (reclen < (TFTP_DATA_HDR_LEN + 512))
+						terminate = 1;
+					
+					tftp_send_ack(tc); //TODO: Kolla returvärdet					
                     
                     break;
                 case OPCODE_ACK:
@@ -372,9 +394,15 @@ int tftp_transfer(struct tftp_conn *tc)
 						goto out;
 					}
                     
-                    /* Save the numer of sent bytes in 'len' in case
-                     * it's < 512 and the package has to be resent. */
-                    len = tftp_send_data(tc, BLOCK_SIZE); //TODO: Kolla returvärdet
+                    /* If we are putting and sent a data package with
+                     * a block of < 512 bytes last time, we want to
+                     * terminate the loop after getting the final ack */
+					if (len < (TFTP_DATA_HDR_LEN + 512))
+						terminate = 1;
+					else
+						/* Save the numer of sent bytes in 'len' in case
+						* it's < 512 and the package has to be resent. */
+						len = tftp_send_data(tc, BLOCK_SIZE); //TODO: Kolla returvärdet
                     
                     break;
                 case OPCODE_ERR:
@@ -386,8 +414,29 @@ int tftp_transfer(struct tftp_conn *tc)
 
                 }
 
+        	totlen += reclen;
+			
         }
-    while ( 0 /* 3. Loop until file is finished */);
+    while (!terminate);
+    
+    
+    if (tc->type == TFTP_TYPE_GET && terminate)
+		{
+			/* The loop terminated succesfully but the last ack might
+			 * have been lost. Wait for a possible duplicate data
+			 * package and in that case send the ack one more time */
+			if (select(1, &sfd, NULL, NULL, &timeout) > 0)
+				{
+					read(tc->sock, tc->msgbuf, MSGBUF_SIZE);
+						if (ntohs(((u_int16_t *) tc->msgbuf)[0]) == OPCODE_DATA
+								&& ntohs(((u_int16_t*) tc->msgbuf)[1]) == tc->blocknr)
+							{
+									tftp_send_ack(tc);
+							}
+				}			
+		}
+			
+			
 
     printf("\nTotal data bytes sent/received: %d.\n", totlen);
 out:
