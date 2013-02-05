@@ -330,7 +330,7 @@ int tftp_transfer(struct tftp_conn *tc)
         
         
     fd_set sfd;
-    //char tmpbuf[MSGBUF_SIZE];
+    char recbuf[MSGBUF_SIZE];
 
     FD_ZERO(&sfd);
     FD_SET(tc->sock, &sfd);
@@ -423,20 +423,20 @@ int tftp_transfer(struct tftp_conn *tc)
                         }
                     break;
                 default:
-                    //TODO: Använda recvfrom() / tmpbuf istället och kolla efter felaktig source port.
+                    //TODO: Använda recvfrom() istället och kolla efter felaktig source port.
                     
                     /* Save the recieved bytes in 'rec_len' so we
                      * can check if we should terminate the transfer */
                      
                     printf("GOT SOMETHING!!!!\n");
-                    reclen = read(tc->sock, tc->msgbuf, MSGBUF_SIZE);
-                    printf("%d\n", ntohs(((u_int16_t*) tc->msgbuf)[0]));
+                    reclen = read(tc->sock, recbuf, MSGBUF_SIZE);
+                    printf("%d\n", ntohs(((u_int16_t*) recbuf)[0]));
                     break;
                 }
                
             /* 2. Check the message type and take the necessary
              * action. */
-            switch (ntohs(((u_int16_t*) tc->msgbuf)[0]))
+            switch (ntohs(((u_int16_t*) recbuf)[0]))
                 {
                 case OPCODE_DATA:
                     /* Received data block, send ack */

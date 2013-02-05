@@ -28,7 +28,7 @@ typedef char u_int8_t;
 #define MODE_OCTET    "octet"
 #define MODE_MAIL     "mail"
 
-#define TFTP_PORT 69
+#define TFTP_PORT 6969
 
 /* Timeout in seconds */
 #define TFTP_TIMEOUT 2
