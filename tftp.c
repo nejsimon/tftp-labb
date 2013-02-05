@@ -247,17 +247,22 @@ int tftp_send_ack(struct tftp_conn *tc)
  */
 int tftp_send_data(struct tftp_conn *tc, int length)
 {
+	//TODO: Det här borde snyggas upp, ska length vara med eller utan headern?
     struct tftp_data *tdata;
 	int length_real = abs(length);
-	int	dataplen = TFTP_DATA_HDR_LEN + length_real;
-
-    if((tdata = malloc(dataplen)) == NULL)
-        return -1;
-    
+	int	dataplen = TFTP_DATA_HDR_LEN + BLOCK_SIZE;
+	
+	if((tdata = malloc(dataplen)) == NULL)
+		return -1;
+	
     if (length < 0) {
+
+		dataplen = length_real;
+		
 		/* Resend old data block */
 		printf("Resending .. \n");
 		memcpy(tdata, tc->msgbuf, dataplen);
+	
 	} else {
 		/* Create new data block */
 		printf("Not resending.. \n");
