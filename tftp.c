@@ -273,6 +273,7 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 		/* Recalculate the package length in case we only was able to
 		 * read less than 'length_real' bytes from the file */
 		dataplen = TFTP_DATA_HDR_LEN + length_real;
+		memcpy(tc->msgbuf, tdata, dataplen);
 	}
     
     size_t size = sendto(tc->sock, tdata, dataplen, 0, (struct sockaddr *) &tc->peer_addr, tc->addrlen);
