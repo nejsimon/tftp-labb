@@ -136,6 +136,9 @@ struct tftp_conn *tftp_connect(int type, char *fname, char *mode,
     tc->blocknr = 0;
 
     memset(tc->msgbuf, 0, MSGBUF_SIZE);
+    
+    
+    printf("Connection opened. \n");
 
     return tc;
 }
@@ -197,6 +200,8 @@ int tftp_send_wrq(struct tftp_conn *tc)
 
     size_t size = sendto(tc->sock, wrq, reqlen, 0, (struct sockaddr *) &tc->peer_addr, tc->addrlen);
     
+    printf("SENT WRQ\n");
+    
     free(wrq);
     
     return size;
@@ -251,16 +256,19 @@ int tftp_send_data(struct tftp_conn *tc, int length)
     
     if (length < 0) {
 		/* Resend old data block */
+		printf("Resending .. \n");
 		memcpy(tdata, tc->msgbuf, dataplen);
 	} else {
 		/* Create new data block */
-		
+		printf("Not resending.. \n");
 		tc->blocknr++;
 		
 		tdata->opcode = htons(OPCODE_DATA);
 		tdata->blocknr = htons(tc->blocknr);
 		
-		length_real = fread(tdata->data, length_real, 1, tc->fp);
+		length_real = read(fileno(tc->fp), tdata->data, length_real);
+		
+		printf("Updated length: %d \n", length_real);
 		
 		/* Recalculate the package length in case we only was able to
 		 * read less than 'length_real' bytes from the file */
@@ -268,6 +276,8 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 	}
     
     size_t size = sendto(tc->sock, tdata, dataplen, 0, (struct sockaddr *) &tc->peer_addr, tc->addrlen);
+    
+    printf("Sent %d bytes of data \n",size);
     
     free(tdata);
     
@@ -313,15 +323,19 @@ int tftp_transfer(struct tftp_conn *tc)
     
     struct timeval timeout;
 
+
+        /* Sanity check */
+    if (!tc)
+        return -1;
+        
+        
     fd_set sfd;
     //char tmpbuf[MSGBUF_SIZE];
 
     FD_ZERO(&sfd);
     FD_SET(tc->sock, &sfd);
 
-    /* Sanity check */
-    if (!tc)
-        return -1;
+
 
     len = BLOCK_SIZE + TFTP_DATA_HDR_LEN;
     reclen = 0;
@@ -340,13 +354,15 @@ int tftp_transfer(struct tftp_conn *tc)
     if (tc->type == TFTP_TYPE_GET)
         {
             /* Send read request */
-            tftp_send_rrq(tc);
+            if(tftp_send_rrq(tc) < 0)
+                fprintf(stderr,"FAIL TO SEND RRQ\n");
 
         }
     else if (tc->type == TFTP_TYPE_PUT)
         {
             /* Send write request */
-            tftp_send_wrq(tc);
+             if(tftp_send_wrq(tc) < 0)
+                fprintf(stderr,"FAIL TO SEND WRQ\n");
 
         }
     else
@@ -366,8 +382,12 @@ int tftp_transfer(struct tftp_conn *tc)
              * mode. */
 
             /* ... */    
+            printf("Waiting for response... \n");
+            
+                FD_ZERO(&sfd);
+                FD_SET(tc->sock, &sfd);
 
-            switch (select(1, &sfd, NULL, NULL, &timeout))
+            switch (select(tc->sock + 1, &sfd, NULL, NULL, &timeout))
                 {
                 case (-1):
                     fprintf(stderr, "\nselect()\n");
@@ -407,7 +427,10 @@ int tftp_transfer(struct tftp_conn *tc)
                     
                     /* Save the recieved bytes in 'rec_len' so we
                      * can check if we should terminate the transfer */
+                     
+                    printf("GOT SOMETHING!!!!\n");
                     reclen = read(tc->sock, tc->msgbuf, MSGBUF_SIZE);
+                    printf("%d\n", ntohs(((u_int16_t*) tc->msgbuf)[0]));
                     break;
                 }
                
@@ -442,8 +465,8 @@ int tftp_transfer(struct tftp_conn *tc)
                     
                     break;
                 case OPCODE_ACK:
-                    /* Received ACK, send next block */
-                    
+                    printf("Received ACK, send next block\n");
+                        
                     if (tc->type == TFTP_TYPE_GET) {
 						fprintf(stderr, "\nExpected data, got ack\n");
 						goto out;
@@ -452,13 +475,17 @@ int tftp_transfer(struct tftp_conn *tc)
                     /* If we are putting and sent a data package with
                      * a block of < 512 bytes last time, we want to
                      * terminate the loop after getting the final ack */
-					if (len < (TFTP_DATA_HDR_LEN + BLOCK_SIZE))
+					if (len < (TFTP_DATA_HDR_LEN + BLOCK_SIZE)) {
 						terminate = 1;
-					else
+						printf("We're done sending, let's terminate\n");
+						  }       
+					else {
 						/* Save the numer of sent bytes in 'len' in case
 						* it's < 512 and the package has to be resent. */
 						len = tftp_send_data(tc, BLOCK_SIZE); 
-                    
+						printf("We sent a packet of length %d\n",len);
+						}
+                                
                     break;
                 case OPCODE_ERR:
                     /* Handle error... */
@@ -469,7 +496,7 @@ int tftp_transfer(struct tftp_conn *tc)
 
                 }
 
-        	totlen += reclen;
+        	totlen += (len + reclen);
 			
         }
     while (!terminate);
@@ -546,7 +573,7 @@ int main (int argc, char **argv)
         }
 
     /* Connect to the remote server */
-    tc = tftp_connect(type, fname, MODE_OCTET, hostname);
+    tc = tftp_connect(type, fname, MODE_NETASCII, hostname);
 
     if (!tc)
         {
