@@ -11,7 +11,7 @@ DEFS=-Wall -g3
 
 # Automatically detect SunOS or Linux:
 ifeq ($(OS),SunOS)
-DEFS=-Wall -DSUNOS_5
+DEFS=-Wall -DSUNOS_5 -g3
 CLIBS=-lsocket -lnsl -lresolv
 endif
 
