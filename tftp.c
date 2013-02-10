@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/select.h>
+#include <string.h>
 
 #include "tftp.h"
 
@@ -19,6 +20,9 @@ extern int h_errno;
 
 #define TFTP_TYPE_GET 0
 #define TFTP_TYPE_PUT 1
+
+#define HOST_NEWLINE_STYLE "\n"
+#define NETASCII_NEWLINE_STYLE "\r\n"
 
 /* Should cover most needs */
 #define MSGBUF_SIZE (TFTP_DATA_HDR_LEN + BLOCK_SIZE)
@@ -311,6 +315,11 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 		memcpy(tdata, tc->msgbuf, dataplen);
 	
 	} else {
+		
+		int i = 0;
+		int hnllen = sizeof(HOST_NEWLINE_STYLE);
+		int nanllen = sizeof(NETASCII_NEWLINE_STYLE);
+		
 		/* Create new data block */
 		printf("Not resending.. \n");
 		tc->blocknr++;
@@ -318,7 +327,40 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 		tdata->opcode = htons(OPCODE_DATA);
 		tdata->blocknr = htons(tc->blocknr);
 		
-		length_real = read(fileno(tc->fp), tdata->data, length_real);
+		if (!strcmp(tc->mode, MODE_OCTET)) {
+			while ((fread(&tdata->data[i], 1, 1, tc->fp)) && i <= length_real) {
+			
+				if (i >= hnllen) {
+					if (!strncmp(&tdata->data[i - hnllen + 1], HOST_NEWLINE_STYLE, hnllen)) {
+						/* Host newline found, update to netascii newline 
+						 * and update i acordingly */
+						
+						if (i == BLOCK_SIZE && (nanllen - hnllen) == 1) {
+							/* Corner case, the buffer is full but we would
+							 * still like to but another char in it, put it
+							 * in the stream instead */
+							 tdata->data[i] = NETASCII_NEWLINE_STYLE[0];
+							 ungetc(NETASCII_NEWLINE_STYLE[1], tc->fp);
+						} else {
+							strncpy(&tdata->data[i - hnllen + 1], NETASCII_NEWLINE_STYLE, nanllen);
+							i = i + (nanllen - hnllen);
+						}
+					}			
+				}
+			
+				i++;
+			}
+			
+			/* set length_real to i in case we read < the wanted bytes */
+			length_real = i;
+			
+		}
+		else {
+			length_real = fread(&tdata->data[i], 1, length_real, tc->fp);
+		}
+
+		
+
 		tdata->data[length_real] = '\0';
 		
 		printf("Extracted data %s \n", tdata->data);
@@ -332,7 +374,7 @@ int tftp_send_data(struct tftp_conn *tc, int length)
     
     size_t size = sendto(tc->sock, tdata, dataplen, 0, (struct sockaddr *) &tc->peer_addr, tc->addrlen);
     
-    printf("Sent %d bytes of data \n",size);
+    printf("Sent %zu bytes of data \n",size);
     
     free(tdata);
     
