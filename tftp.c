@@ -327,7 +327,7 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 		tdata->opcode = htons(OPCODE_DATA);
 		tdata->blocknr = htons(tc->blocknr);
 		
-		if (!strcmp(tc->mode, MODE_OCTET)) {
+		if (!strcmp(tc->mode, MODE_NETASCII)) {
 			while ((fread(&tdata->data[i], 1, 1, tc->fp)) && i <= length_real) {
 			
 				if (i >= hnllen) {
@@ -336,14 +336,18 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 						 * and update i acordingly */
 						
 						if (i == BLOCK_SIZE && (nanllen - hnllen) == 1) {
+							
 							/* Corner case, the buffer is full but we would
 							 * still like to but another char in it, put it
 							 * in the stream instead */
 							 tdata->data[i] = NETASCII_NEWLINE_STYLE[0];
 							 ungetc(NETASCII_NEWLINE_STYLE[1], tc->fp);
+						
 						} else {
+							
 							strncpy(&tdata->data[i - hnllen + 1], NETASCII_NEWLINE_STYLE, nanllen);
 							i = i + (nanllen - hnllen);
+							
 						}
 					}			
 				}
@@ -361,7 +365,7 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 
 		
 
-		tdata->data[length_real] = '\0';
+		//tdata->data[length_real] = '\0';
 		
 		printf("Extracted data %s \n", tdata->data);
 		
