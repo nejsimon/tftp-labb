@@ -599,7 +599,9 @@ int tftp_transfer(struct tftp_conn *tc)
                                 
                     break;
                 case OPCODE_ERR:
-                    /* Handle error... */
+                    printf("The transfer was terminated with an error ");
+                    printf("and the pitiful excuse given by the server was: ");
+                    printf("%s\n", ((struct tftp_err*) &recbuf)->errmsg);
                     break;
                 default:
                     fprintf(stderr, "\nUnknown message type\n");
