@@ -317,8 +317,8 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 	} else {
 		
 		int i = 0;
-		int hnllen = sizeof(HOST_NEWLINE_STYLE);
-		int nanllen = sizeof(NETASCII_NEWLINE_STYLE);
+		int hnllen = sizeof(HOST_NEWLINE_STYLE) - 1;
+		int nanllen = sizeof(NETASCII_NEWLINE_STYLE) - 1;
 		
 		/* Create new data block */
 		printf("Not resending.. \n");
@@ -575,13 +575,13 @@ int tftp_transfer(struct tftp_conn *tc)
                     
                     int i = 0;
                     
-                    int hnllen = sizeof(HOST_NEWLINE_STYLE);
-					int nanllen = sizeof(NETASCII_NEWLINE_STYLE);
+                    int hnllen = sizeof(HOST_NEWLINE_STYLE) - 1;
+					int nanllen = sizeof(NETASCII_NEWLINE_STYLE) - 1;
                     
                     if (!strcmp(tc->mode, MODE_NETASCII)) {
 						 do {
 							 
-							 if (!strncmp(&recbuf[i], NETASCII_NEWLINE_STYLE, nanllen)) {
+							 if (!strncmp(&recbuf[TFTP_DATA_HDR_LEN + i], NETASCII_NEWLINE_STYLE, nanllen)) {
 								 fwrite(HOST_NEWLINE_STYLE, 1, hnllen, tc->fp);
 								 
 								 i += nanllen;
