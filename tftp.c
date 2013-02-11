@@ -360,7 +360,7 @@ int tftp_send_data(struct tftp_conn *tc, int length)
 			
 		}
 		else {
-			length_real = fread(&tdata->data[i], 1, length_real, tc->fp);
+			length_real = fread(tdata->data, 1, length_real, tc->fp);
 		}
 
 		
@@ -546,6 +546,7 @@ int tftp_transfer(struct tftp_conn *tc)
             switch (ntohs(((u_int16_t*) recbuf)[0]))
                 {
                 case OPCODE_DATA:
+					
                     /* Received data block, send ack */
                     //TODO: Skriv datan till en fil
                 	printf("Received data\n");
@@ -572,7 +573,33 @@ int tftp_transfer(struct tftp_conn *tc)
 					
 					tftp_send_ack(tc); //TODO: Kolla returvärdet					
                     
-					fwrite(&recbuf[TFTP_DATA_HDR_LEN],1,reclen - TFTP_DATA_HDR_LEN,tc->fp);
+                    int i = 0;
+                    
+                    int hnllen = sizeof(HOST_NEWLINE_STYLE);
+					int nanllen = sizeof(NETASCII_NEWLINE_STYLE);
+                    
+                    if (!strcmp(tc->mode, MODE_NETASCII)) {
+						 do {
+							 
+							 if (!strncmp(&recbuf[i], NETASCII_NEWLINE_STYLE, nanllen)) {
+								 fwrite(HOST_NEWLINE_STYLE, 1, hnllen, tc->fp);
+								 
+								 i += nanllen;
+								 
+							  }
+							  else {
+								
+								  fwrite(&recbuf[TFTP_DATA_HDR_LEN], 1, 1,tc->fp);
+								  i++;
+								  
+							  }
+							 
+						 } while(i <= reclen - TFTP_DATA_HDR_LEN);
+						
+					}
+					else {
+						fwrite(&recbuf[TFTP_DATA_HDR_LEN],1,reclen - TFTP_DATA_HDR_LEN,tc->fp);
+					}
 
                     break;
                 case OPCODE_ACK:
