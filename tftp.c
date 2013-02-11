@@ -589,12 +589,12 @@ int tftp_transfer(struct tftp_conn *tc)
 							  }
 							  else {
 								
-								  fwrite(&recbuf[TFTP_DATA_HDR_LEN], 1, 1,tc->fp);
+								  fwrite(&recbuf[TFTP_DATA_HDR_LEN + i], 1, 1,tc->fp);
 								  i++;
 								  
 							  }
 							 
-						 } while(i <= reclen - TFTP_DATA_HDR_LEN);
+						 } while(i < reclen - TFTP_DATA_HDR_LEN);
 						
 					}
 					else {
